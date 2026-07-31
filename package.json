@@ -1,0 +1,36 @@
+{
+  "name": "qsoftware-dashboard-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native iOS and Android shell for the Q Software Dashboard",
+  "scripts": {
+    "build": "node scripts/build-shell.mjs",
+    "typecheck": "tsc --noEmit",
+    "doctor": "node scripts/doctor.mjs",
+    "sync": "npm run build && cap sync",
+    "assets": "capacitor-assets generate --iconBackgroundColor '#4f46e5' --iconBackgroundColorDark '#08090f' --splashBackgroundColor '#4f46e5' --splashBackgroundColorDark '#08090f'",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android",
+    "run:ios": "npm run sync && cap run ios",
+    "run:android": "npm run sync && cap run android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.4",
+    "@capacitor/app": "^7.1.0",
+    "@capacitor/browser": "^7.0.3",
+    "@capacitor/core": "^7.4.4",
+    "@capacitor/haptics": "^7.0.3",
+    "@capacitor/ios": "^7.4.4",
+    "@capacitor/keyboard": "^7.0.3",
+    "@capacitor/network": "^7.0.2",
+    "@capacitor/push-notifications": "^7.0.3",
+    "@capacitor/splash-screen": "^7.0.3",
+    "@capacitor/status-bar": "^7.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.4.4",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.3"
+  }
+}

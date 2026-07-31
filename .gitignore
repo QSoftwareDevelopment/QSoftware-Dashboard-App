@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+
+# Build output. www/shell.js is generated from src/shell by `npm run build`;
+# regenerating it is one command and committing it would produce a minified diff
+# on every change.
+www/shell.js
+
+# --- Native projects ---
+# ios/ and android/ ARE committed. They hold real work that cannot be regenerated:
+# ShellViewController.swift, MainActivity.java, the App Links intent filter, the
+# storyboard custom class, and the push entries in Info.plist. `npx cap add` would
+# silently produce a stock project without any of it.
+# Only the derived and machine-local parts are ignored.
+
+# iOS
+ios/App/Pods/
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+ios/App/build/
+ios/DerivedData/
+*.xcuserstate
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/app/release/
+*.iml
+*.hprof
+.cxx/
+
+# --- Credentials: never commit ---
+# Push configuration carries project identifiers and, in the Apple case, a private
+# signing key. SETUP.md explains where each file comes from.
+google-services.json
+GoogleService-Info.plist
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist
+*.p8
+*.p12
+*.keystore
+*.jks
+key.properties
+.env
+.env.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
