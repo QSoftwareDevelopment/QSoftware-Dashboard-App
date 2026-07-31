@@ -53,7 +53,10 @@ const config: CapacitorConfig = {
     backgroundColor: '#f1f3f9',
     allowMixedContent: false,
     captureInput: true,
-    webContentsDebuggingEnabled: false,
+    // Deliberately NOT set. Capacitor defaults this to the build's debuggable
+    // flag: on for debug builds, off for release. Hardcoding false would also
+    // disable chrome://inspect against a debug build — which is the only way to
+    // debug the injected shell against the real WebView.
   },
 
   plugins: {
