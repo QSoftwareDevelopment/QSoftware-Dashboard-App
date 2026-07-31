@@ -7,12 +7,17 @@
     "build": "node scripts/build-shell.mjs",
     "typecheck": "tsc --noEmit",
     "doctor": "node scripts/doctor.mjs",
+    "//copy": "Day-to-day: rebuild the shell and push it into both native projects. Needs no native toolchain, so it works on a machine with neither Xcode nor the Android SDK.",
+    "copy": "npm run build && cap copy",
+    "//sync": "Only needed after adding or removing a Capacitor plugin. Runs pod install, so the iOS half requires full Xcode; use sync:android to skip it.",
     "sync": "npm run build && cap sync",
+    "sync:android": "npm run build && cap sync android",
+    "sync:ios": "npm run build && cap sync ios",
     "assets": "capacitor-assets generate --iconBackgroundColor '#4f46e5' --iconBackgroundColorDark '#08090f' --splashBackgroundColor '#4f46e5' --splashBackgroundColorDark '#08090f'",
     "open:ios": "cap open ios",
     "open:android": "cap open android",
-    "run:ios": "npm run sync && cap run ios",
-    "run:android": "npm run sync && cap run android"
+    "run:ios": "npm run copy && cap run ios",
+    "run:android": "npm run copy && cap run android"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.4",

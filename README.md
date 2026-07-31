@@ -72,7 +72,16 @@ The dashboard is remote, so **web changes need no rebuild** — deploy the dashb
 picks them up on next load. Rebuild only when this repo changes:
 
 ```bash
-npm run sync     # rebuild src/shell -> www/shell.js, copy into both native projects
+npm run copy          # rebuild src/shell -> www/shell.js, push into both native projects
+```
+
+`copy` needs no native toolchain and is the command you want almost always. Use `sync` only
+after adding or removing a Capacitor plugin — it also runs `pod install`, so its iOS half needs
+full Xcode:
+
+```bash
+npm run sync          # both platforms; fails on the iOS half without Xcode
+npm run sync:android  # Android only
 ```
 
 ---
