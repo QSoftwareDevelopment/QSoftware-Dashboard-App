@@ -33,11 +33,16 @@ jobs:
       - name: Typecheck the shell
         run: npm run typecheck
 
-      # Builds src/shell -> www/shell.js and copies it into the native projects.
-      # `copy` rather than `sync`: sync also runs pod install, which cannot work
-      # on a Linux runner.
-      - name: Build and copy shell
-        run: npm run copy
+      # `sync:android`, not `copy`. Capacitor's own android/.gitignore excludes
+      # its generated scaffolding by design — capacitor-cordova-android-plugins/,
+      # app/src/main/assets/public/, capacitor.config.json — so a fresh clone
+      # genuinely lacks them and Gradle dies with:
+      #   Could not read script '.../cordova.variables.gradle' as it does not exist
+      # `copy` only writes web assets; `update` is what regenerates the plugin
+      # scaffolding, and `sync` is both. Scoped to android so it never tries
+      # pod install on a Linux runner.
+      - name: Sync shell into the Android project
+        run: npm run sync:android
 
       # The bundle is injected by MainActivity at runtime; if it is missing the
       # app still launches and silently has no native layer. Fail here instead.
