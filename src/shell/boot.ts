@@ -40,8 +40,9 @@ function installStatusBar() {
   const media = window.matchMedia('(prefers-color-scheme: dark)')
 
   const apply = (dark: boolean) => {
-    // Style.Dark means "dark content on a light bar" in the plugin's naming —
-    // the inverse of what the name suggests, and a reliable source of bugs.
+    // Style names the CONTENT it is meant for, not the text colour: Style.Dark is
+    // "light text for dark backgrounds". So dark theme -> Style.Dark. Reading it
+    // as a text colour inverts the mapping and hides the icons on both themes.
     StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light }).catch(() => {})
     if (Capacitor.getPlatform() === 'android') {
       StatusBar.setBackgroundColor({ color: dark ? CANVAS_DARK : BRAND }).catch(() => {})
