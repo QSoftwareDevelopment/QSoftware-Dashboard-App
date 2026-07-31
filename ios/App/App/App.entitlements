@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		Debug entitlements.
+
+		Normally Xcode writes this when you tick "Push Notifications" and
+		"Associated Domains" under Signing & Capabilities. There is no Xcode on
+		the machine this project is developed on, so the file is maintained by
+		hand and wired to the build configurations in project.pbxproj.
+
+		aps-environment MUST be "development" here and "production" in
+		AppRelease.entitlements. A build signed with the wrong one registers
+		successfully and then silently receives nothing — APNs routes dev tokens
+		and prod tokens through entirely separate infrastructure.
+	-->
+	<key>aps-environment</key>
+	<string>development</string>
+
+	<!--
+		Universal Links. Inert until
+		https://app.qsoftware.ca/.well-known/apple-app-site-association is served
+		as application/json with no redirect — see SETUP.md section 5.
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:app.qsoftware.ca</string>
+	</array>
+</dict>
+</plist>

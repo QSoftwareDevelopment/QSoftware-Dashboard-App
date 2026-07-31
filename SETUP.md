@@ -94,22 +94,75 @@ curl -s -o /dev/null -w '%{http_code}\n' https://app.qsoftware.ca/api/user/push-
 
 ## 3. APNs (iOS push)
 
-1. [Apple Developer → Keys](https://developer.apple.com/account/resources/authkeys/list) →
-   **+** → enable **Apple Push Notifications service (APNs)** → download the `.p8`.
-   **Apple lets you download it once.** Back it up.
-2. In Firebase → **Project settings → Cloud Messaging → Apple app configuration**, upload the
-   `.p8` with its Key ID and your Team ID.
-3. Add the **Push Notifications** capability in Xcode → **App** target → Signing & Capabilities.
-4. Add the Firebase iOS app (bundle ID `ca.qsoftware.dashboard`), download
-   `GoogleService-Info.plist`, and drag it into `ios/App/App/` in Xcode with
-   *Copy items if needed* checked.
+Every step here is a browser or a file copy. **No Xcode required** — the capability that
+normally needs it is already committed as entitlements files (see 3.4).
+
+### 3.1 Register the App ID
+
+[Certificates, Identifiers & Profiles → Identifiers](https://developer.apple.com/account/resources/identifiers/list)
+→ **+** → App IDs → App.
+
+- Bundle ID: **explicit**, `ca.qsoftware.dashboard`
+- Tick **Push Notifications**
+- Tick **Associated Domains** (for Universal Links, section 5)
+
+If the ID already exists, edit it and tick both. Capabilities ticked here must match the
+entitlements files or signing fails with a provisioning-profile mismatch.
+
+### 3.2 Create the APNs key
+
+[Keys](https://developer.apple.com/account/resources/authkeys/list) → **+** → name it
+"Q Software Push" → enable **Apple Push Notifications service (APNs)** → Continue → Register →
+**Download**.
+
+> **Apple lets you download this exactly once.** Back it up somewhere durable now. Losing it
+> means revoking and re-creating the key, and re-uploading to Firebase.
+
+Note the **Key ID** (10 chars, also in the filename) and your **Team ID**
+([Membership](https://developer.apple.com/account#MembershipDetailsCard), 10 chars).
+
+### 3.3 Upload it to Firebase
+
+Firebase Console → **Project settings → Cloud Messaging → Apple app configuration** →
+**APNs Authentication Key → Upload** → the `.p8`, its Key ID, and your Team ID.
+
+This is what lets one FCM credential reach iOS. The dashboard never talks to APNs directly.
+
+Also add the Firebase **iOS app** (bundle ID `ca.qsoftware.dashboard`), download
+`GoogleService-Info.plist`, and place it at `ios/App/App/GoogleService-Info.plist`. It is
+gitignored — it must be provided at build time, so for CI add it as a base64 secret and write it
+out in a step before `pod install`.
+
+### 3.4 Entitlements — already done, do not re-add in Xcode
+
+Ticking "Push Notifications" under Signing & Capabilities is the usual step and needs Xcode.
+It is committed instead:
+
+| File | Configuration | `aps-environment` |
+|---|---|---|
+| `ios/App/App/App.entitlements` | Debug | `development` |
+| `ios/App/App/AppRelease.entitlements` | Release, TestFlight, App Store | `production` |
+
+Both are wired via `CODE_SIGN_ENTITLEMENTS` in `project.pbxproj`.
+
+**This split matters more than it looks.** APNs runs dev and production on completely separate
+infrastructure. A build signed with the wrong `aps-environment` registers successfully, returns
+a valid-looking token, and then receives nothing — no error, anywhere. If TestFlight push is
+silent while debug builds work, this is the first thing to check.
 
 `Info.plist` already declares the `remote-notification` background mode, and `AppDelegate.swift`
-already bridges APNs registration to the plugin's NotificationCenter events — without those two
-bridges the plugin's `registration` event never fires and no token ever reaches the server,
-silently.
+already bridges APNs registration into the plugin's NotificationCenter events. Without those two
+bridges the plugin's `registration` event never fires and no token ever reaches the server —
+also silently.
 
-> Push cannot be tested on the iOS Simulator. Use a physical device.
+### 3.5 Provisioning profile
+
+[Profiles](https://developer.apple.com/account/resources/profiles/list) → **+** →
+**App Store Connect** distribution → select the App ID → your distribution certificate →
+download. Base64 it into the `IOS_PROVISIONING_PROFILE` secret (section 6).
+
+> Push cannot be tested on the iOS Simulator — it has no APNs connection. Use a physical device
+> via TestFlight.
 
 ---
 
@@ -201,7 +254,37 @@ Apple's CDN gets a redirect to `/login` and association fails.
 
 ---
 
-## 6. Store submission
+## 6. CI secrets — shipping iOS without Xcode
+
+`.github/workflows/ios.yml` compiles unsigned on every push, needing no Apple account. Signing
+and TestFlight upload are a separate opt-in job, skipped until these secrets exist, so their
+absence never turns the repo's checks red.
+
+Add under **Settings → Secrets and variables → Actions**:
+
+| Secret | Where it comes from |
+|---|---|
+| `APPLE_TEAM_ID` | [Membership](https://developer.apple.com/account#MembershipDetailsCard) |
+| `IOS_DIST_CERT_P12` | Distribution cert exported from Keychain Access, base64 |
+| `IOS_DIST_CERT_PASSWORD` | The password you set during that export |
+| `IOS_KEYCHAIN_PASSWORD` | Any random string — a throwaway keychain per CI run |
+| `IOS_PROVISIONING_PROFILE` | The profile from 3.5, base64 |
+| `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` | [App Store Connect → Users and Access → Integrations](https://appstoreconnect.apple.com/access/integrations/api) |
+
+Base64 a file for pasting:
+
+```bash
+base64 -i dist.p12 | pbcopy
+```
+
+The App Store Connect API key is used instead of an Apple ID password: scoped, revocable, and
+unaffected by 2FA.
+
+Then **Actions → iOS → Run workflow → tick "testflight"**.
+
+---
+
+## 7. Store submission
 
 ### App Store Review Guideline 4.2
 
@@ -235,5 +318,10 @@ Provide a working demo account. Reviewers will not sign up for a business dashbo
 | `[q-shell] shell.js missing` in logs | `www/shell.js` not built or not copied. Run `npm run sync` |
 | App loads but no native behaviour | The iOS storyboard lost its `ShellViewController` custom class, or `MainActivity` was regenerated by `npx cap add android` |
 | Push registration error on every launch | Expected until sections 2 and 3 are done |
+| **TestFlight push silent, debug push works** | `aps-environment` mismatch. Release must be `production` — APNs runs dev and prod on separate infrastructure, and the wrong one returns a valid token that receives nothing. See 3.4 |
+| Token never reaches the server | The app registers at launch, which on a fresh install is the login screen. `push.ts` retries after sign-in; if it still fails, check the endpoint returns 401 rather than 404 |
+| `provisioning profile does not match entitlements` | A capability is ticked in one place and not the other. The App ID (3.1) and the entitlements files (3.4) must agree |
+| CI: `Could not read script '.../cordova.variables.gradle'` | Android job ran `cap copy`. Capacitor gitignores its generated scaffolding, so CI needs `cap sync android` |
+| CI: `scheme not found` | `App.xcscheme` left `xcshareddata/`. It must be shared, not a user scheme |
 | Google sign-in shows `disallowed_useragent` | `src/shell/links.ts` did not install — the shell is not being injected |
 | Offline page appears when online | A main-frame request failed. Check `server.url` and DNS, not `errorPath` |

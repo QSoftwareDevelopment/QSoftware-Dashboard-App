@@ -86,6 +86,17 @@ jobs:
       - run: npm ci
       - run: npm run copy
 
+      # GoogleService-Info.plist is gitignored — it carries project identifiers
+      # and must never be committed — so CI writes it from a secret. Without it
+      # the app builds and installs fine and simply never registers for push,
+      # with no error. Skipped rather than failed so the job still works before
+      # Firebase is configured.
+      - name: Write GoogleService-Info.plist
+        if: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST != '' }}
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}" | base64 --decode \
+            > ios/App/App/GoogleService-Info.plist
+
       - name: pod install
         run: pod install
         working-directory: ios/App
