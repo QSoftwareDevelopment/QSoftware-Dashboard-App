@@ -1,0 +1,165 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      testflight:
+        description: 'Sign and upload to TestFlight (needs the signing secrets)'
+        type: boolean
+        default: false
+
+# This workflow exists because there is no Xcode on the dev machine — full Xcode
+# needs ~50 GB and there is ~7 GB free. GitHub's macOS runners are free for
+# public repositories, so iOS builds happen here instead of locally.
+
+jobs:
+  # Always runs, needs no Apple account. Proves the Swift compiles, the shell is
+  # bundled, and ShellViewController is wired — everything short of signing.
+  build:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck the shell
+        run: npm run typecheck
+
+      - name: Build and copy shell
+        run: npm run copy
+
+      - name: Verify shell reached the app bundle
+        run: test -s ios/App/App/public/shell.js
+
+      - name: pod install
+        run: pod install
+        working-directory: ios/App
+
+      # The storyboard names ShellViewController as its custom class. If that file
+      # ever drops out of the target the app builds fine and silently loses the
+      # entire native layer, so it is asserted rather than assumed.
+      - name: Verify ShellViewController is in the target
+        run: |
+          grep -q 'ShellViewController.swift' ios/App/App.xcodeproj/project.pbxproj
+          grep -q 'customClass="ShellViewController"' ios/App/App/Base.lproj/Main.storyboard
+
+      # No signing: CODE_SIGNING_ALLOWED=NO compiles everything without an Apple
+      # account, which is the point — this job must stay green for contributors
+      # who have no access to the team.
+      - name: Build (unsigned)
+        run: |
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+        working-directory: ios/App
+
+  # Opt-in. Skipped entirely until the signing secrets exist, so the absence of an
+  # Apple Developer account never turns the repo's checks red.
+  testflight:
+    if: github.event_name == 'workflow_dispatch' && inputs.testflight
+    runs-on: macos-15
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run copy
+
+      - name: pod install
+        run: pod install
+        working-directory: ios/App
+
+      # A throwaway keychain per run: the runner is ephemeral, and this keeps the
+      # cert out of the default keychain where a later step could read it.
+      - name: Import signing certificate
+        env:
+          CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+        run: |
+          echo "$CERT_P12" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm /tmp/cert.p12
+
+      - name: Install provisioning profile
+        env:
+          PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROFILE" | base64 --decode \
+            > ~/Library/MobileDevice/Provisioning\ Profiles/build.mobileprovision
+
+      - name: Archive
+        run: |
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            archive
+        working-directory: ios/App
+
+      - name: Export IPA
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export"
+
+      # App Store Connect API key rather than an Apple ID password: it is scoped,
+      # revocable, and does not break when 2FA is enforced.
+      - name: Upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p ~/private_keys
+          echo "$ASC_KEY_P8" | base64 --decode \
+            > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$RUNNER_TEMP/export/App.ipa" \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"

@@ -1,0 +1,60 @@
+name: Android
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Capacitor 7 compiles at source level 21. JDK 17 fails with
+      # "invalid source release: 21" inside :capacitor-android, which reads like
+      # a broken dependency rather than a JDK problem.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - run: npm ci
+
+      - name: Typecheck the shell
+        run: npm run typecheck
+
+      # Builds src/shell -> www/shell.js and copies it into the native projects.
+      # `copy` rather than `sync`: sync also runs pod install, which cannot work
+      # on a Linux runner.
+      - name: Build and copy shell
+        run: npm run copy
+
+      # The bundle is injected by MainActivity at runtime; if it is missing the
+      # app still launches and silently has no native layer. Fail here instead.
+      - name: Verify shell reached the Android assets
+        run: test -s android/app/src/main/assets/public/shell.js
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon
+        working-directory: android
+
+      - name: Confirm the shell is inside the APK
+        run: |
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk \
+            | grep -q 'assets/public/shell.js'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
