@@ -6,7 +6,7 @@ import { installHaptics } from './haptics'
 import { installLinks } from './links'
 import { installNetwork } from './network'
 import { installPush } from './push'
-import { installSafeArea } from './safe-area'
+import { installNativeFeel } from './native-feel'
 import { guard, log } from './log'
 
 /**
@@ -37,7 +37,7 @@ function install() {
   }
 
   guard('boot', installBoot)
-  guard('safe-area', installSafeArea)
+  guard('native-feel', installNativeFeel)
   guard('links', installLinks)
   guard('back', installBack)
   guard('deeplinks', installDeepLinks)

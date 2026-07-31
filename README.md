@@ -130,10 +130,15 @@ Each capability is an independent module under [`src/shell/`](src/shell/) export
 `install()`, composed in [`index.ts`](src/shell/index.ts) and individually guarded — one
 failure never cascades into the dashboard.
 
+**The shell adds what is missing; it never re-does what the dashboard already owns.** The
+dashboard's `globals.css` already handles safe-area insets on the bottom nav, mobile header, and
+sidebar, and forces 16px form controls so iOS does not zoom on focus. Check there before adding
+anything here — duplicated padding stacks rather than overriding.
+
 | Module | Does |
 |---|---|
 | `boot.ts` | Hides the splash on first paint; syncs the status bar to light/dark |
-| `safe-area.ts` | Notch and home-indicator padding; suppresses web-page tells |
+| `native-feel.ts` | Disables scroll rubber-banding; marks the document `html.q-native` |
 | `links.ts` | Off-origin URLs → system browser. **Required**: Google returns `disallowed_useragent` for OAuth inside a WebView |
 | `back.ts` | Android back pops history and closes modals instead of killing the app |
 | `deeplinks.ts` | Universal Links / App Links routing |
