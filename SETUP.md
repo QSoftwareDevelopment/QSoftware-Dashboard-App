@@ -62,6 +62,34 @@ cannot re-sign it for you.
 Until step 4, `firebase-messaging` is on the classpath but never initialises, so registration
 fails with a single logged warning and the app carries on. That is the intended state.
 
+### 2b. Service account — what the *server* needs
+
+The app receives; the dashboard sends. The sender authenticates with a service account, not
+with `google-services.json`.
+
+1. Firebase Console → **Project settings → Service accounts → Generate new private key**.
+   A JSON file downloads. **Treat it like a password** — it can send push to every one of your
+   users. Do not commit it; `*.json` credentials are gitignored here for that reason.
+2. In Vercel → the dashboard project → **Settings → Environment Variables**, add
+   `FIREBASE_SERVICE_ACCOUNT` with the **entire JSON file contents** as the value, for
+   Production and Preview.
+3. Redeploy.
+
+`lib/push.ts` parses it, signs a JWT with Web Crypto, and exchanges that for an access token
+(cached for the hour it lasts). It restores `\n` inside `private_key` automatically — Vercel's
+env storage flattens newlines, and the PEM is invalid without them, which is the most common
+way this silently fails.
+
+Verify it took:
+
+```bash
+# In the dashboard repo, against the deployed site
+curl -s -o /dev/null -w '%{http_code}\n' https://app.qsoftware.ca/api/user/push-token \
+  -X POST -H 'Content-Type: application/json' -d '{}'
+# 401 = route is live and correctly rejecting an unauthenticated caller.
+# 404 = the branch is not deployed yet.
+```
+
 ---
 
 ## 3. APNs (iOS push)
@@ -85,54 +113,41 @@ silently.
 
 ---
 
-## 4. Dashboard endpoint — `POST /api/user/push-token`
+## 4. Dashboard server side — done, needs deploying
 
-**This does not exist yet.** `src/shell/push.ts` posts the device token to it; until the route
-is added it logs one warning per launch and does nothing else.
+Built on the `feat/push-tokens` branch of `QSoftwareDevelopment/QSoftware-Dashboard`:
 
-Add to `QSoftwareDevelopment/QSoftware-Dashboard` at `app/api/user/push-token/route.ts`:
+| File | What |
+|---|---|
+| `MIGRATION_v27.sql` | `push_tokens` table, RLS, `retire_push_token()` |
+| `app/api/user/push-token/route.ts` | `POST` registers, `DELETE` clears on sign-out |
+| `lib/push.ts` | `pushToProfile()` / `pushToBusiness()` via FCM HTTP v1 |
+| `app/api/textbot/voice/route.ts` | Missed call → notification, fire-and-forget |
 
-```ts
-// Same-origin request from the app's WebView, so the Supabase session cookie
-// identifies the user and the token is attributed to the right business.
-export async function POST(request: Request) {
-  const { token, platform } = await request.json()
-  // …resolve the session with the existing Supabase server client,
-  //   then upsert on (user_id, token) so re-registration is idempotent.
-}
-```
+To activate:
 
-Suggested table:
+1. Merge the branch.
+2. Run `MIGRATION_v27.sql` in the Supabase SQL editor.
+3. Set `FIREBASE_SERVICE_ACCOUNT` in Vercel (section 2 below produces it).
 
-```sql
-create table push_tokens (
-  id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null references auth.users(id) on delete cascade,
-  token       text not null,
-  platform    text not null check (platform in ('ios', 'android')),
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now(),
-  unique (user_id, token)
-);
-alter table push_tokens enable row level security;
-```
+Until step 3 the sender is inert — no push, no crash, no log noise.
 
-Tokens rotate. Prune on send when FCM/APNs reports one unregistered, or the table grows
-stale entries that quietly inflate delivery failure rates.
+FCM reaches **both** platforms: Android directly, iOS via APNs once the `.p8` is uploaded to
+Firebase. One credential, one code path — the server never talks to APNs itself.
 
-### Sending
+### Notification shape
 
-`src/shell/push.ts` routes taps using `data.path`:
+`src/shell/push.ts` routes taps on `data.path`:
 
 ```json
 {
-  "notification": { "title": "Missed call", "body": "New voicemail from (519) 555-0134" },
+  "notification": { "title": "Missed call", "body": "519 (Kitchener) — we texted them back" },
   "data": { "path": "/dashboard/textbot/calls" }
 }
 ```
 
-The value must start with a single `/`. Anything else is ignored — that check is deliberate,
-so a compromised or malformed push cannot redirect the WebView off-origin.
+The path must start with a single `/`. Anything else is ignored, on both the sending and
+receiving side — so a malformed or hostile push cannot redirect the WebView off-origin.
 
 ---
 

@@ -51,8 +51,13 @@ cd android && ./gradlew assembleDebug
 
 ### iOS
 
-Requires **full Xcode** — Command Line Tools alone cannot build an app, and `pod install`
-fails without it.
+**You do not need Xcode to build this.** Both repos are public, so GitHub's macOS runners are
+free — [`.github/workflows/ios.yml`](.github/workflows/ios.yml) compiles every push and can
+sign and upload to TestFlight on demand. Full Xcode needs ~50 GB, which is why the workflow
+exists at all.
+
+To build locally anyway, you need **full Xcode** — Command Line Tools alone cannot build an
+app, and `pod install` fails without it.
 
 ```bash
 # Install Xcode from the App Store, then:
@@ -154,9 +159,15 @@ frame** failing, so a 404 on an image does not trigger it.
 
 ## Push notifications
 
-Wired but **inert until credentials are added** — the app builds, installs, and runs fully
-without them. See [SETUP.md](SETUP.md) for APNs and Firebase setup, and for the one endpoint
-the dashboard still needs (`POST /api/user/push-token`).
+Wired end-to-end and **inert until credentials are added** — the app builds, installs, and runs
+without them.
+
+The server half lives in the dashboard repo on the `feat/push-tokens` branch: `push_tokens`
+(MIGRATION_v27.sql), `POST`/`DELETE /api/user/push-token`, and `lib/push.ts` sending via FCM —
+which reaches Android directly and iOS through APNs on one credential. It is already wired into
+the Twilio voice webhook, so a missed call notifies the owner's phone.
+
+All that remains is a Firebase project and an APNs key. See [SETUP.md](SETUP.md).
 
 ---
 
